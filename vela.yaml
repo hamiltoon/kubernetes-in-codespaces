@@ -1,0 +1,54 @@
+apiVersion: core.oam.dev/v1beta1
+kind: Application
+metadata:
+  name: helm-redis
+spec:
+  components:
+    - name: redis
+      type: helm
+      properties:
+        repoType: "helm"
+        url: "https://charts.bitnami.com/bitnami"
+        chart: "redis"
+        version: "16.8.5"
+        values:
+          master:
+            persistence:
+              size: 1Gi
+          replica:
+            persistence:
+              size: 1Gi
+  policies:
+    - name: topology-default
+      type: topology
+      properties:
+        clusters: ["local"]
+        namespace: default
+    - name: topology-at
+      type: topology
+      properties:
+        clusters: ["local"]
+        namespace: at
+    - name: topology-prod
+      type: topology
+      properties:
+        clusters: ["local"]
+        namespace: prod
+  workflow:
+    steps:
+      - name: deploy2default
+        properties:
+          policies: ["topology-default"]
+        type: deploy
+      - name: approve-at-deploy
+        type: suspend
+      - name: deploy2at
+        properties:
+          policies: ["topology-at"]
+        type: deploy
+      - name: approve-prod-deploy
+        type: suspend
+      - name: deploy2prod
+        properties:
+          policies: ["topology-prod"]
+        type: deploy

@@ -1,0 +1,118 @@
+apiVersion: core.oam.dev/v1beta1
+kind: Application
+metadata:
+  name: vela delete first-vela-app
+  namespace: default
+spec:
+  components:
+    - name: k8s-demo-service
+      properties:
+        objects:
+          - apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: nginx
+            spec:
+              replicas: 1
+              selector:
+                matchLabels:
+                  app: nginx
+              strategy:
+                type: Recreate
+              template:
+                metadata:
+                  labels:
+                    app: nginx
+                spec:
+                  containers:
+                    - image: nginx
+                      name: nginx
+                      ports:
+                        - containerPort: 80
+                      volumeMounts:
+                        - name: config
+                          mountPath: "/config"
+                          readOnly: true
+                  volumes:
+                    # You set volumes at the Pod level, then mount them into containers inside that Pod
+                    - name: config
+                      configMap:
+                        # Provide the name of the ConfigMap you want to mount.
+                        name: game-demo
+                        # An array of keys from the ConfigMap to create as files
+                        items:
+                          - key: "game.properties"
+                            path: "game.properties"
+                          - key: "user-interface.properties"
+                            path: "user-interface.properties"
+          - apiVersion: v1
+            kind: ConfigMap
+            metadata:
+              name: game-demo
+            data:
+              # property-like keys; each key maps to a simple value
+              player_initial_lives: "3"
+              ui_properties_file_name: "user-interface.properties"
+
+              # file-like keys
+              game.properties: |
+                enemy.types=aliens,monsters
+                player.maximum-lives=5
+              user-interface.properties: |
+                color.good=purple
+                color.bad=yellow
+                allow.textmode=true
+          - apiVersion: v1
+            kind: Service
+            metadata:
+              annotations:
+                service.beta.kubernetes.io/aws-load-balancer-type: nlb
+              labels:
+                app: nginx
+              name: nginx
+              namespace: default
+            spec:
+              externalTrafficPolicy: Local
+              ports:
+                - name: http
+                  port: 80
+                  protocol: TCP
+                  targetPort: 80
+              selector:
+                app: nginx
+              type: LoadBalancer
+      type: k8s-objects
+  policies:
+    - name: topology-default
+      type: topology
+      properties:
+        clusters: ["local"]
+        namespace: default
+    - name: topology-at
+      type: topology
+      properties:
+        clusters: ["local"]
+        namespace: at
+    - name: topology-prod
+      type: topology
+      properties:
+        clusters: ["local"]
+        namespace: prod
+  workflow:
+    steps:
+      - name: deploy2default
+        properties:
+          policies: ["topology-default"]
+        type: deploy
+      - name: approve-at-deploy
+        type: suspend
+      - name: deploy2at
+        properties:
+          policies: ["topology-at"]
+        type: deploy
+      - name: approve-prod-deploy
+        type: suspend
+      - name: deploy2prod
+        properties:
+          policies: ["topology-prod"]
+        type: deploy
